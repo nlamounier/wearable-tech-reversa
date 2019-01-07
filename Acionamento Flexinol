@@ -1,0 +1,17 @@
+Programa 1 – Acionamento Flexinol®
+
+int muscle2 = 9;
+void setup() {
+pinMode(muscle1, OUTPUT);
+
+}
+void loop() {
+digitalWrite(muscle1, HIGH);
+delay(6800);
+digitalWrite(muscle1, LOW);
+delay(6800);
+digitalWrite(muscle1, HIGH);
+delay(6800);
+digitalWrite(muscle1, LOW);
+delay(6800);
+}
