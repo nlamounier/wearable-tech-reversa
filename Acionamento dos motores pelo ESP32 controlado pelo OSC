@@ -1,0 +1,328 @@
+Programa 2 – Acionamento dos motores pelo ESP32 controlado pelo OSC
+
+#ifdef ESP8266
+#include <ESP8266WiFi.h>
+#else
+#include <WiFi.h>
+#endif
+#include <WiFiUdp.h>
+#include <OSCMessage.h>
+#include <OSCBundle.h>
+#include <OSCData.h>
+#include <ESP32Servo.h>
+// For a connection via I2C using Wire include
+#include <Wire.h>  // Only needed for Arduino 1.6.5 and earlier
+#include "SSD1306.h" // alias for `#include "SSD1306Wire.h"`
+
+// Initialize the OLED display using Wire libraryE
+SSD1306  display(0x3c, 5,4);
+// SH1106 display(0x3c, D3, D5);
+
+char ssid[] = "Reversa";          // your network SSID (name)
+char pass[] = "34868208";                    // your network password
+
+// A UDP instance to let us send and receive packets over UDP
+WiFiUDP Udp;
+const IPAddress outIp(10,40,10,105);        // remote IP (not needed for receive)
+const unsigned int outPort = 9999;          // remote port (not needed for receive)
+const unsigned int localPort = 8888;        // local port to listen for UDP packets (here's where we send the packets)
+
+OSCErrorCode error;
+unsigned int led1State = HIGH;              // LOW means led is *on*
+unsigned int led2State = HIGH;              // LOW means led is *on*
+unsigned int led3State = HIGH;              // LOW means led is *on*
+
+// servo
+Servo my1servo;  // create servo object to control a servo
+Servo my2servo;  // create servo object to control a servo
+Servo my3servo;  // create servo object to control a servo
+                // 16 servo objects can be created on the ESP32
+
+int pos1 = 0;    // variable to store the servo position
+int pos2 = 0;    // variable to store the servo position
+int pos3 = 0;    // variable to store the servo position
+unsigned int servo1State = 0;              // servoState
+unsigned int servo2State = 0;              // servoState
+unsigned int servo3State = 0;              // servoState
+unsigned int servo1Mode = 0;              // servoState
+unsigned int servo2Mode = 0;              // servoState
+unsigned int servo3Mode = 0;              // servoState
+unsigned int servoAllMode = 0;              // General mode
+// Recommended PWM GPIO pins on the ESP32 include 2,4,hb12-19,21-23,25-27,32-33
+// Servo pins grouped 
+int servo1Pin = 18;
+int servo2Pin = 4;
+int servo3Pin = 19;
+
+const int motorPin = 17;
+unsigned int vibState = HIGH; 
+unsigned int vibMode = HIGH;
+
+// Led
+#ifndef BUILTIN_LED
+#ifdef LED_BUILTIN
+#define BUILTIN_LED LED_BUILTIN
+#else
+#define BUILTIN_LED 22
+#endif
+#endif
+int led1pin = 22; //Naveda: reserve for other messages
+int led2pin = 14;//Naveda: reserve for other messages
+int led3pin = 27; // Naveda: Led to indicate sucesseful connections
+// buttons for manual Control
+
+int butPin1 = 23;
+int butPin2 = 32;
+int butPin3 = 33;
+int butPin4 = 2;
+
+void setup() {
+  // Setup led
+  pinMode(led1pin, OUTPUT);
+  digitalWrite(led1pin, led1State);    // turn *on* led
+  
+  pinMode(led2pin, OUTPUT);
+  digitalWrite(led2pin, led2State);    // turn *on* led
+
+  pinMode(led3pin, OUTPUT);
+  digitalWrite(led3pin, led3State);    // turn *on* led
+// Start serial connection
+  Serial.begin(115200); //Naveda: check if your monitor is at the same rate
+
+  // Connect to WiFi network
+  Serial.println();
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, pass);
+// Naveda: here the connection happens:
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+  // Led signal
+  digitalWrite(led3pin, led3State);    // Naveda: turn *on* led connection
+
+  Serial.println("Starting UDP");
+  Udp.begin(localPort);
+  Serial.print("Local port: ");
+#ifdef ESP32
+  Serial.println(localPort);
+#else
+  Serial.println(Udp.localPort());
+#endif
+
+// DISPLAY: Initialising the UI will init the display too.
+display.init();
+display.flipScreenVertically();
+display.setFont(ArialMT_Plain_10);
+
+// Configure servos buttons
+
+    my1servo.attach(servo1Pin);
+    my2servo.attach(servo2Pin);
+    my3servo.attach(servo3Pin);
+
+// Configure buttons
+// TODO Verificar se é possível fazer pullup nas portas indicadas
+
+  pinMode(butPin1, INPUT_PULLUP);
+  pinMode(butPin2, INPUT_PULLUP);
+  pinMode(butPin3, INPUT_PULLUP);
+ pinMode(butPin4, INPUT_PULLUP);
+ 
+pinMode(motorPin, OUTPUT);
+}
+
+void led1(OSCMessage &msg) {
+  led1State = msg.getInt(0);
+  digitalWrite(led1pin, led1State);
+  Serial.print("/led: ");
+  Serial.println(led1State);
+}
+void led2(OSCMessage &msg) {
+  led1State = msg.getInt(0);
+  digitalWrite(led2pin, led2State);
+  Serial.print("/led2: ");
+  Serial.println(led2State);
+}
+
+void led3(OSCMessage &msg) {
+  led3State = msg.getInt(0);
+  digitalWrite(led3pin, led3State);
+  Serial.print("/led3: ");
+  Serial.println(led3State);
+}
+
+void servo1(OSCMessage &msg) {
+   servo1State = msg.getInt(0);
+  if (servo1State < 360){
+  digitalWrite(servo1Pin, servo1State);
+  Serial.print("servo1: ");
+  Serial.println(servo1State);
+    my1servo.write(servo1State);              // tell servo to go to position in variable 'pos'
+    delay(15);
+  }
+}
+
+void servo2(OSCMessage &msg) {
+   servo2State = msg.getInt(0);
+  if (servo2State < 360){
+  digitalWrite(servo2Pin, servo2State);
+  Serial.print("servo2: ");
+  Serial.println(servo2State);
+    my2servo.write(servo2State);              // tell servo to go to position in variable 'pos'
+    delay(15);
+  }
+}
+
+void servo3(OSCMessage &msg) {
+   servo3State = msg.getInt(0);
+  if (servo3State < 360){
+  digitalWrite(servo3Pin, servo3State);
+  Serial.print("servo3: ");
+  Serial.println(servo3State);
+    my3servo.write(servo3State);              // tell servo to go to position in variable 'pos'
+    delay(15);
+  }
+}
+
+void vibracao(OSCMessage &msg) {
+ vibState = msg.getInt(0);
+  digitalWrite(motorPin, vibState);
+  Serial.print("/vibracao: ");
+  Serial.println(vibState);
+  }
+
+void servoMode1(OSCMessage &msg) {
+   servo1Mode = msg.getInt(0);
+  if (servo1Mode == 1){ // oscila
+    Serial.print("servo state 1 ");
+  servoOscila1();
+  }
+}
+  void servoMode2(OSCMessage &msg) {
+   servo2Mode = msg.getInt(0);
+  if (servo2Mode == 1){ // oscila
+     Serial.print("servo state 2 ");
+  servoOscila2();
+  }
+
+}
+  // create
+void servoMode3(OSCMessage &msg) {
+   servo3Mode = msg.getInt(LOW);
+  if (servo3Mode == HIGH){ // oscila
+     Serial.print("servo state 3 ");
+  servoOscila3();
+  }
+}
+ void vibracaoMode(OSCMessage &msg) {
+   vibMode = msg.getInt(LOW);
+  if (vibMode == HIGH){ // oscila
+ 
+    Serial.print("vibracao ");
+
+  vibracao();
+  }
+}
+// TODO Criar outros modos
+void servoOscila1(){
+      Serial.print("but 1");
+      for (pos1 = 0; pos1 <= 180; pos1 += 5) { // goes from 0 degrees to 180 degrees
+      // in steps of 1 degree
+      my1servo.write(pos1);              // tell servo to go to position in variable 'pos'
+      delay(15);                       // waits 15ms for the servo to reach the position
+      }
+      for (pos1 = 180; pos1 >= 0; pos1 -= 5) { // goes from 180 degrees to 0 degrees
+        my1servo.write(pos1);              // tell servo to go to position in variable 'pos'
+        delay(15);                       // waits 15ms for the servo to reach the position
+      }
+}
+void servoOscila2(){
+      Serial.print("but 2");
+      for (pos2 = 0; pos2 <= 180; pos2 += 5) { // goes from 0 degrees to 180 degrees
+      // in steps of 1 degree
+      my2servo.write(pos2);              // tell servo to go to position in variable 'pos'
+      delay(15);                       // waits 15ms for the servo to reach the position
+      }
+      for (pos2 = 180; pos2 >= 0; pos2 -= 5) { // goes from 180 degrees to 0 degrees
+        my2servo.write(pos2);              // tell servo to go to position in variable 'pos'
+        delay(15);                       // waits 15ms for the servo to reach the position
+      }
+}
+void servoOscila3(){
+      Serial.print("but 3");
+      for (pos3 = 0; pos3 <= 180; pos3 += 5) { // goes from 0 degrees to 180 degrees
+      // in steps of 1 degree
+      my3servo.write(pos3);              // tell servo to go to position in variable 'pos'
+      delay(15);                       // waits 15ms for the servo to reach the position
+      }
+      for (pos3 = 180; pos3 >= 0; pos3 -= 5) { // goes from 180 degrees to 0 degrees
+        my3servo.write(pos3);              // tell servo to go to position in variable 'pos'
+        delay(15);                       // waits 15ms for the servo to reach the position
+      }
+}
+void vibracao(){
+  digitalWrite(motorPin, HIGH);
+delay(3000);
+digitalWrite(motorPin, LOW);
+delay(10000);
+}
+
+// LOOP
+void loop() {
+  display.clear();
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+//    display.drawStringMaxWidth(0, 0, 128,"teste 1");
+        display.drawStringMaxWidth(0, 0, 128,String(WiFi.localIP()));
+
+  if (digitalRead(butPin1) == LOW){
+      servoOscila1();
+  }
+    if (digitalRead(butPin2) == LOW){
+      servoOscila2();
+  }
+    if (digitalRead(butPin3) == LOW){
+      servoOscila3();
+  }
+  if (digitalRead(butPin4) == LOW){
+      vibracao();
+  }
+
+  OSCBundle bundle;
+  int size = Udp.parsePacket();
+
+  if (size > 0) {
+    while (size--) {
+      bundle.fill(Udp.read());
+    }
+    if (!bundle.hasError()) {
+      // check if it receives a message at the refered address, calls functions described
+      bundle.dispatch("/led1", led1);
+      bundle.dispatch("/led2", led2);
+      bundle.dispatch("/led3", led3);
+      
+      bundle.dispatch("/servo1", servo1);
+      bundle.dispatch("/servo2", servo2);
+      bundle.dispatch("/servo3", servo3);
+
+      bundle.dispatch("/vibracao", vibracao);
+    // todo:  
+      bundle.dispatch("/servo1Mode", servoMode1);
+      bundle.dispatch("/servo2Mode", servoMode2);
+      bundle.dispatch("/servo3Mode", servoMode3);
+ 
+bundle.dispatch("/vibMode", vibracaoMode);
+    } else {
+      error = bundle.getError();
+      Serial.print("error: ");
+      Serial.println(error);
+    }
+  }
+}
